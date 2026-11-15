@@ -1,0 +1,51 @@
+name: vigiar-parlamento
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # de 10 em 10 minutos (o GitHub pode atrasar alguns minutos)
+  workflow_dispatch:          # permite correr à mão, no botão "Run workflow"
+    inputs:
+      testar_aviso:
+        description: "Só enviar um aviso de teste"
+        type: boolean
+        default: false
+
+concurrency:
+  group: vigiar
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # para guardar o estado.json
+
+jobs:
+  vigiar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Testar o aviso (só à mão)
+        if: ${{ inputs.testar_aviso }}
+        env:
+          SMTP_UTILIZADOR: ${{ secrets.SMTP_UTILIZADOR }}
+          SMTP_PALAVRA_PASSE: ${{ secrets.SMTP_PALAVRA_PASSE }}
+          EMAIL_DESTINO: ${{ secrets.EMAIL_DESTINO }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python3 vigiar.py --testar-aviso
+
+      - name: Vigiar a página
+        if: ${{ !inputs.testar_aviso }}
+        env:
+          SMTP_UTILIZADOR: ${{ secrets.SMTP_UTILIZADOR }}
+          SMTP_PALAVRA_PASSE: ${{ secrets.SMTP_PALAVRA_PASSE }}
+          EMAIL_DESTINO: ${{ secrets.EMAIL_DESTINO }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python3 vigiar.py
+
+      - name: Guardar o estado (só se mudou)
+        if: ${{ !inputs.testar_aviso }}
+        run: |
+          git config user.name "vigia"
+          git config user.email "vigia@users.noreply.github.com"
+          git add estado.json
+          git diff --cached --quiet || (git commit -m "estado: mudou" && git push)
